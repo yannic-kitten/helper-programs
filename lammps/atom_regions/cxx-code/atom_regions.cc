@@ -1,31 +1,19 @@
+/*
+ *  Note: this program has not been finished! - Use the finished reimplementation written in Nim
+ */
+
 #include <iostream>
 #include <sstream>
-#include <iomanip>
 #include <string>
 #include <vector>
 #include <algorithm>
 #include <iterator>
 #include <cstdint>
+#include <cassert>
+#include "utils.h"
 
 constexpr int N_DIMS = 3;
 
-std::string to_wdtstr(int i, int wdt) {
-  std::stringstream sstr;
-  sstr << std::setw(wdt) << std::setfill('0') << i;
-  return sstr.str();
-}
-
-template<typename... Args>
-void error_msg(const char* fmt, Args... args) {
-  printf(fmt, args...);
-  exit(1);
-}
-
-std::vector<std::string> toStrVec(int argc, char* argv[]) {
-  std::vector<std::string> res(argc);
-  std::generate(res.begin(), res.end(), [n=0]() mutable { return std::string(argv[n]); });
-  return res;
-}
 
 enum class GridStyle {
   Tensor,
@@ -33,32 +21,21 @@ enum class GridStyle {
 };
 
 template<class T>
-class Triple {
-  T data[N_DIMS];
-  T& x = data[0];
-  T& y = data[1];
-  T& z = data[2];
+struct Triple {
+  T x, y, z;
   Triple() : x(0), y(0), z(0) { }
   Triple(T x, T y, T z) : x{x}, y{y}, z{z} { }
-  T operator[](int i) const { return data[i]; }
-  T& operator[](int i) { return data[i]; }
   T sum() { return x + y + z; }
   T prod() { return x * y * z; }
 };
 
-
 struct Cell {
-  double borders[2*N_DIMS];
-  double& x_low  = borders[0];
-  double& x_high = borders[1];
-  double& y_low  = borders[2];
-  double& y_high = borders[3];
-  double& z_low  = borders[4];
-  double& z_high = borders[5];
+  //double borders[2*N_DIMS];
+  double x_low, x_high;
+  double y_low, y_high;
+  double z_low, z_high;
   std::string name;
   Cell(std::string name) : name{name} { }
-  double operator[](int i) const { return data[i]; }
-  double& operator[](int i) { return data[i]; }
 };
 
 struct Cuts {
@@ -70,29 +47,29 @@ struct Cuts {
   std::vector<double> z_cuts;
   std::vector<double> y_cuts;
   std::vector<double> x_cuts;
-  Cuts(int x, int y, int z, GridStyle grid) : dim(x, y, z), grid{grid} {
-    zero_one_scale = true;
+  Cuts(int x, int y, int z, GridStyle grid) : dim(x, y, z), grid{grid}, zero_one_scale{true} {
     if (grid == GridStyle::Tensor) {
-        z_cuts = std::vector<double>(z+1, 0);
-        y_cuts = std::vector<double>(y+1, 0);
-        x_cuts = std::vector<double>(x+1, 0);
+      z_cuts = std::vector<double>(z+1, 0);
+      y_cuts = std::vector<double>(y+1, 0);
+      x_cuts = std::vector<double>(x+1, 0);
     } else if (grid == GridStyle::Staggered) {
-        z_cuts = std::vector<double>(z+1, 0);
-        y_cuts = std::vector<double>(z * (y+1), 0);
-        x_cuts = std::vector<double>(z * y * (x+1), 0);
+      z_cuts = std::vector<double>(z+1, 0);
+      y_cuts = std::vector<double>(z * (y+1), 0);
+      x_cuts = std::vector<double>(z * y * (x+1), 0);
     }
   }
 
-  Cuts(int x, int y, int z, GridStyle grid, std::vector<double> zyx_cut_params, bool zero_one_scale = true) : Cuts(x, y, z, grid), zero_one_scale{zero_one_scale} {
+  Cuts(int x, int y, int z, GridStyle grid, std::vector<double> zyx_cut_params, bool zero_one_scale = true) : Cuts(x, y, z, grid) {
+    this->zero_one_scale = zero_one_scale;
     assert(z_cuts.size() + y_cuts.size() + x_cuts.size() == zyx_cut_params.size());
     std::copy(z_cuts.begin(), z_cuts.end(), zyx_cut_params.begin());
     std::copy(y_cuts.begin(), y_cuts.end(), zyx_cut_params.begin()+z_cuts.size());
     std::copy(x_cuts.begin(), x_cuts.end(), zyx_cut_params.begin()+z_cuts.size()+y_cuts.size());
   }
 
-  template<class T>
-  Cuts operator*(Triple<T> lens) {
-    if (not zero_one_scale) error_msg("The Cuts are not on a 0-1 scale and can't be rescaled anymore!");
+  Cuts operator*(Triple<int>& lens) {
+    if (not zero_one_scale)
+      error_msg("The Cuts are not on a 0-1 scale and can't be rescaled anymore!");
     Cuts res(*this);
     for (double& val : res.z_cuts) val *= lens.z;
     for (double& val : res.y_cuts) val *= lens.y;
@@ -112,27 +89,6 @@ struct System {
   Triple<int> procs, lens;
   Cuts cuts;
   std::vector<Cell> cells;      // len: procs.prod()
-
-  // TODO: add cuts (optionally?)
-  // TODO: remove args-parsing
-  System(char* args[], double region_gap = 0) : procs(args), lens(args+N_DIMS) {
-    // calculate ideal, arithmetic cuts (= borders of regions)
-    for (int d = 0; d < N_DIMS; ++d) {
-      DimCuts dc(procs[d]);
-      std::generate(dc.data.begin(), dc.data.end(), [&,i=0]() mutable { return lens[d] * (i++ * 1.0 / procs[d]); } );
-      dimcuts.push_back(dc);
-    }
-    // calculate borders for each region
-    for (int reg = 0; reg < procs.prod(); ++reg) {
-      Coord coord = idx_to_coord(reg);
-      Cell cell("blk" + to_wdtstr(reg, 2));
-      for (int d = 0; d < N_DIMS; ++d) {
-        cell[2*d]     = dimcuts[d][coord[d]]     + region_gap/2;  // cell.x_low  = dimcuts[0][coord.x];
-        cell[2*d + 1] = dimcuts[d][coord[d] + 1] - region_gap/2;  // cell.x_high = dimcuts[0][coord.x + 1];
-      }
-      cells.push_back(cell);
-    }
-  }
 
   System(Triple<int> procs, Triple<int> lens, Cuts cuts, double region_gap = 0) : procs{procs}, lens{lens}, cuts{cuts} {
     // scale cuts
@@ -162,9 +118,10 @@ struct System {
     // "region  <region-name>  <kind=>block  <x-low> <x-high> <y-low> <y-high> <z-low> <z-high>"
     std::stringstream lmp_cmd;
     for (auto& cell : cells) {
-      lmp_cmd << "region  " << cell.name << "  block  ";
-      std::copy(cell.data, cell.data+6, std::ostream_iterator<double>(lmp_cmd, "  "));
-      lmp_cmd << std::endl;
+      lmp_cmd << "region  " << cell.name << "  block  "
+              << cell.x_low << " " << cell.x_high << "  "
+              << cell.y_low << " " << cell.y_high << "  "
+              << cell.z_low << " " << cell.z_high << std::endl;
     }
     return lmp_cmd.str();
   }
@@ -173,13 +130,16 @@ struct System {
     // "create_atoms  <atom_kind=1>  random  <n-atoms> <seed> <region-name>"
     std::stringstream lmp_cmd;
     for (auto& cell : cells) {
-      lmp_cmd << "create_atoms  1  random  " << n_particles_per_region << " " << seed << " " << cell.name << std::endl;
+      lmp_cmd << "create_atoms  1  random  "
+              << n_particles_per_region << " "
+              << seed << " "
+              << cell.name << std::endl;
       if (inc_seed) seed += 1;
     }
     return lmp_cmd.str();
   }
 
-  int coord_to_idx(Coord c) {
+  int coord_to_idx(Triple<int> c) {
     return c.z * (procs.y * procs.x) + c.y * procs.x + c.x;
   }
 
@@ -199,7 +159,7 @@ struct System {
  *  interface: ./atom_regions <grid>  <procs-x> <procs-y> <procs-z>  <len-x> <len-y> <len-z>  <region-gap>  <cut-parameters>
  *    grid:                       tensor or staggered (string)
  *    procs-x, procs-y, procs-z:  number of processors in direction x, y and z (int)
- *    len-x, len-y, len-z:        length of the system in dimension x, y and z (int|float)
+ *    len-x, len-y, len-z:        length of the system in dimension x, y and z (int)
  *    region-gap:                 gap between regions
  *    cut-parameters:             comma separated list of cuts in order of z, y, x (float in ]0,1[)
  *                                  for tensor   grid exactly  (procs-z - 1) + (procs-y - 1) + (procs-x - 1)  values
@@ -210,11 +170,11 @@ int main(int argc, char* argv[]) {
   // check number of arguments
   int argn = 1 + 2 * N_DIMS + 2;
   if (argc-1 != argn)
-    error_msg("ERROR: This program requires %i arguments!\n" \
+    error_msg("This program requires %i arguments!\n" \
       "./atom_regions <grid>  <procs-x> <procs-y> <procs-z>  <len-x> <len-y> <len-z>  <region-gap>  <cut-params>\n" \
       "  grid:                      tensor or staggered (string)\n" \
       "  procs-x, procs-y, procs-z: number of processors in direction x, y and z (int)\n" \
-      "  len-x, len-y, len-z:       length of the system in dimension x, y and z (int|float)\n" \
+      "  len-x, len-y, len-z:       length of the system in dimension x, y and z (int)\n" \
       "  region-gap:                gap between regions\n" \
       "  cut-parameters:            comma separated list of cuts in order of z, y, x (float in ]0,1[)\n" \
       "                               tensor   grid: exactly (procs-z - 1) + (procs-y - 1) + (procs-x - 1) values\n" \
@@ -237,11 +197,11 @@ int main(int argc, char* argv[]) {
   }
 
   // parse arguments
-  System sys(argv+1, region_gap);
+  //System sys(argv+1, region_gap);
 
-  std::cout << sys.lmp_style_regions() << std::endl;
+  //std::cout << sys.lmp_style_regions() << std::endl;
 
-  std::cout << sys.lmp_style_create() << std::endl;
+  //std::cout << sys.lmp_style_create() << std::endl;
 
   return 0;
 }
