@@ -15,8 +15,8 @@ type
     name: string
     border: Triple[tuple[low, high: float]]
   Cuts = object
-    dim: Triple[int]
     grid: GridStyle
+    dim: Triple[int]
     dimcuts: Triple[seq[float]]
     zero_one_scale: bool
   Lammps_params = tuple
@@ -30,9 +30,7 @@ type
     regions: seq[Region]
     lmp: Lammps_params
 
-proc sum[T](t: Triple[T]): T =  t.x + t.y + t.z
 proc prod[T](t: Triple[T]): T = t.x * t.y * t.z
-proc `+`[T](t: Triple[T]; f: T): Triple[T] = (t.x + f, t.y + f, t.z + f)
 proc z_major_idx(coord, dim: Triple[int]): int =
   coord.z * dim.y * dim.x + coord.y * dim.x + coord.x
 
@@ -46,7 +44,7 @@ proc add_gap(reg: Region; gap: float): Region =
 
 
 
-proc initCuts(dim: Triple[int]; grid: GridStyle; zyx_cuts: seq[float]): Cuts =
+proc initCuts(grid: GridStyle; dim: Triple[int]; zyx_cuts: seq[float]): Cuts =
   let z_cuts = zyx_cuts[0..<(dim.z+1)]
   var y_cuts, x_cuts: seq[float]
   case grid:
@@ -101,7 +99,6 @@ proc initSystem(dim: Triple[int]; lens: Triple[float]; cuts: Cuts; region_gap = 
   result.calc_scaled_regions(region_gap)
 
 proc parseSystem(args: seq[string]): System =
-  # ./atom_regions <grid>  <procs-x> <procs-y> <procs-z>  <len-x> <len-y> <len-z>  <region-gap> <lmp-params> <cut-parameters>
   var k = 0
   let grid = parseEnum[GridStyle](args[k]) ; k.inc
   let dim = (args[k].parseInt, args[k+1].parseInt, args[k+2].parseInt).Triple ; k.inc 3
@@ -110,14 +107,13 @@ proc parseSystem(args: seq[string]): System =
   let lmp_raw = args[k].split(',') ; k.inc
   let lmp = (lmp_raw[0].parseInt, lmp_raw[1].parseInt, lmp_raw[2].parseBool)
   let zyx_cuts = args[k].split(',').map(parseFloat) ; k.inc
-  assert k == 10
+  assert k == args.len
   case grid:
     of Tensor:
       assert zyx_cuts.len == (dim.z + 1) + (dim.y + 1) + (dim.x + 1)
     of Staggered:
       assert zyx_cuts.len == (dim.z + 1) + dim.z * (dim.y + 1) + dim.z * dim.y * (dim.x + 1)
-
-  let cuts = initCuts(dim, grid, zyx_cuts)
+  let cuts = initCuts(grid, dim, zyx_cuts)
   initSystem(dim, lens, cuts, region_gap, lmp)
 
 proc lmp_region_cmds(sys: System): string =
@@ -136,12 +132,10 @@ proc lmp_atomcreate_cmds(sys: System): string =
 
 
 proc main() =
+  # ./atom_regions <grid>  <procs-x> <procs-y> <procs-z>  <len-x> <len-y> <len-z>  <region-gap> <lmp-params> <cut-parameters>
   let cliargs = commandLineParams()
   let sys = parseSystem(cliargs)
-
   echo sys.lmp_region_cmds & "\n" & sys.lmp_atomcreate_cmds
-
-
 
 when isMainModule:
   main()
