@@ -1,10 +1,5 @@
 import std / [sequtils, strutils, strformat, cmdline]
-
-const N_DIM = 3
-
-proc error(msg: string) =
-  stderr.writeLine(msg)
-  QuitFailure.quit
+import general_utils / error
 
 type
   GridStyle = enum
@@ -99,22 +94,24 @@ proc initSystem(dim: Triple[int]; lens: Triple[float]; cuts: Cuts; region_gap = 
   result.calc_scaled_regions(region_gap)
 
 proc parseSystem(args: seq[string]): System =
-  var k = 0
-  let grid = parseEnum[GridStyle](args[k]) ; k.inc
-  let dim = (args[k].parseInt, args[k+1].parseInt, args[k+2].parseInt).Triple ; k.inc 3
-  let lens = (args[k].parseFloat, args[k+1].parseFloat, args[k+2].parseFloat) ; k.inc 3
-  let region_gap = args[k].parseFloat ; k.inc
-  let lmp_raw = args[k].split(',') ; k.inc
-  let lmp = (lmp_raw[0].parseInt, lmp_raw[1].parseInt, lmp_raw[2].parseBool)
-  let zyx_cuts = args[k].split(',').map(parseFloat) ; k.inc
-  assert k == args.len
-  case grid:
-    of Tensor:
-      assert zyx_cuts.len == (dim.z + 1) + (dim.y + 1) + (dim.x + 1)
-    of Staggered:
-      assert zyx_cuts.len == (dim.z + 1) + dim.z * (dim.y + 1) + dim.z * dim.y * (dim.x + 1)
-  let cuts = initCuts(grid, dim, zyx_cuts)
-  initSystem(dim, lens, cuts, region_gap, lmp)
+  error_if args.len < 10, "missing arguments"
+  error_if args.len > 10, "too many arguments"
+  try:
+    let grid = parseEnum[GridStyle](args[0])
+    let dim = (args[1].parseInt, args[2].parseInt, args[3].parseInt).Triple
+    let lens = (args[4].parseFloat, args[5].parseFloat, args[6].parseFloat)
+    let region_gap = args[7].parseFloat
+    let lmp_raw = args[8].split(',')
+    let lmp = (lmp_raw[0].parseInt, lmp_raw[1].parseInt, lmp_raw[2].parseBool)
+    let zyx_cuts = args[9].split(',').map(parseFloat)
+    error_if(case grid:
+      of Tensor:    zyx_cuts.len != (dim.z + 1) + (dim.y + 1) + (dim.x + 1)
+      of Staggered: zyx_cuts.len != (dim.z + 1) + dim.z * (dim.y + 1) + dim.z * dim.y * (dim.x + 1)
+      , "The number of cuts does not fit the grid and processor dimensions")
+    let cuts = initCuts(grid, dim, zyx_cuts)
+    return initSystem(dim, lens, cuts, region_gap, lmp)
+  except:
+    error "invalid argument"
 
 proc lmp_region_cmds(sys: System): string =
   for reg in sys.regions:
@@ -132,11 +129,15 @@ proc lmp_atomcreate_cmds(sys: System): string =
 
 
 proc main() =
-  # ./atom_regions <grid>  <procs-x> <procs-y> <procs-z>  <len-x> <len-y> <len-z>  <region-gap> <lmp-params> <cut-parameters>
   let cliargs = commandLineParams()
+
+  if "-h" in cliargs or "--help" in cliargs or cliargs.len == 0: usage_quit()
+
   let sys = parseSystem(cliargs)
   echo sys.lmp_region_cmds & "\n" & sys.lmp_atomcreate_cmds
 
+
 when isMainModule:
+  error_info.usage = "./lmp_atom_regions <tensor|staggered> <nx> <ny> <nz> <lenx> <leny> <lenz> <region-gap> <natoms-per-region,seed,inc-seed> <zyx-cuts(csv)>"
   main()
 
