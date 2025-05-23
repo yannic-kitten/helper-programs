@@ -2,7 +2,7 @@
 ##  in `file.dat`, so that it can be read and processed by R as a table of data.
 ## If the .dat file for a .out file already exists, it is skipped.
 
-import std / [os, osproc, strutils, strformat]
+import std / [os, strutils, strformat]
 
 proc dat(file: string): string =
   if file.endswith(".out"):
@@ -10,9 +10,7 @@ proc dat(file: string): string =
   return file & ".dat"
 
 proc main() =
-  var files = "ls *.out".execCmdEx.output.strip.splitLines
-
-  for file in files:
+  for file in walkFiles("*.out"):
     if file.dat.fileExists:
       continue
 
