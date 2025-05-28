@@ -5,7 +5,6 @@ import basic_types
 type
   GridStyle* = enum
     TensorGridStyle = "tensor", StaggeredGridStyle = "staggered", TiledGridStyle = "tiled"
-  MethodNotImplemented* = object of IOError
   Grid* = ref object of RootObj
     dim: Triple[int]
     len: Triple[float]
@@ -17,26 +16,26 @@ method getRegions*(grid: Grid): seq[Region] {.base.} = discard
 
 
 #******************** TensorGrid ********************
-type TensorCuts = seq[ZeroOneFloat]
+type TensorDimCuts = seq[ZeroOneFloat]
 type TensorGrid* = ref object of Grid
-  dimcuts: Triple[TensorCuts]
+  cuts: Triple[TensorDimCuts]
 
-method registerCuts(grid: var TensorGrid, input_cuts: seq[float]) =
+method registerCuts(grid: var TensorGrid, input_cuts: seq[float] #[ zyx ]#) =
   let input_cuts = input_cuts.mapIt(it.ZeroOneFloat)
   let z_cuts = input_cuts[0..<(grid.dim.z+1)]
   let y_cuts = input_cuts[z_cuts.len..^1][0..<(grid.dim.y+1)]
   let x_cuts = input_cuts[(z_cuts.len+y_cuts.len)..^1][0..<(grid.dim.x+1)]
-  grid.dimcuts = (x_cuts, y_cuts, z_cuts)
+  grid.cuts = (x_cuts, y_cuts, z_cuts)
 
 proc getRegion(grid: TensorGrid; coord: Triple[int]): Region =
   let dim = grid.dim
   result = initRegion(coord_to_idx(coord, dim, Z))
-  result.border.z = (low: grid.dimcuts.z[coord.z],
-                    high: grid.dimcuts.z[coord.z + 1])
-  result.border.y = (low: grid.dimcuts.y[coord.y],
-                    high: grid.dimcuts.y[coord.y + 1])
-  result.border.x = (low: grid.dimcuts.x[coord.x],
-                    high: grid.dimcuts.x[coord.x + 1])
+  result.border.z = (low: grid.cuts.z[coord.z],
+                    high: grid.cuts.z[coord.z + 1])
+  result.border.y = (low: grid.cuts.y[coord.y],
+                    high: grid.cuts.y[coord.y + 1])
+  result.border.x = (low: grid.cuts.x[coord.x],
+                    high: grid.cuts.x[coord.x + 1])
   return result * grid.len
 
 method getRegions*(grid: TensorGrid): seq[Region] =
@@ -49,26 +48,26 @@ method getRegions*(grid: TensorGrid): seq[Region] =
 
 
 #******************** StaggeredGrid ********************
-type StaggeredCuts = seq[ZeroOneFloat]
+type StaggeredDimCuts = seq[ZeroOneFloat]
 type StaggeredGrid* = ref object of Grid
-  dimcuts: Triple[StaggeredCuts]
+  cuts: Triple[StaggeredDimCuts]
 
-method registerCuts(grid: var StaggeredGrid; input_cuts: seq[float]) =
+method registerCuts(grid: var StaggeredGrid; input_cuts: seq[float] #[ zyx ]#) =
   let input_cuts = input_cuts.mapIt(it.ZeroOneFloat)
   let z_cuts = input_cuts[0..<(grid.dim.z+1)]
   let y_cuts = input_cuts[z_cuts.len..^1][0..<(grid.dim.z*(grid.dim.y+1))]
   let x_cuts = input_cuts[(z_cuts.len+y_cuts.len)..^1][0..<(grid.dim.z*grid.dim.y*(grid.dim.x+1))]
-  grid.dimcuts = (x_cuts, y_cuts, z_cuts)
+  grid.cuts = (x_cuts, y_cuts, z_cuts)
 
 proc getRegion(grid: StaggeredGrid; coord: Triple[int]): Region =
   let dim = grid.dim
   result = initRegion(coord_to_idx(coord, dim, Z))
-  result.border.z = (low: grid.dimcuts.z[coord.z],
-                    high: grid.dimcuts.z[coord.z + 1])
-  result.border.y = (low: grid.dimcuts.y[coord.z * (dim.y+1) + coord.y],
-                    high: grid.dimcuts.y[coord.z * (dim.y+1) + coord.y + 1])
-  result.border.x = (low: grid.dimcuts.x[coord.z * dim.y * (dim.x+1) + coord.y * (dim.x+1) + coord.x],
-                    high: grid.dimcuts.x[coord.z * dim.y * (dim.x+1) + coord.y * (dim.x+1) + coord.x + 1])
+  result.border.z = (low: grid.cuts.z[coord.z],
+                    high: grid.cuts.z[coord.z + 1])
+  result.border.y = (low: grid.cuts.y[coord.z * (dim.y+1) + coord.y],
+                    high: grid.cuts.y[coord.z * (dim.y+1) + coord.y + 1])
+  result.border.x = (low: grid.cuts.x[coord.z * dim.y * (dim.x+1) + coord.y * (dim.x+1) + coord.x],
+                    high: grid.cuts.x[coord.z * dim.y * (dim.x+1) + coord.y * (dim.x+1) + coord.x + 1])
   return result * grid.len
 
 method getRegions*(grid: StaggeredGrid): seq[Region] =
@@ -130,16 +129,16 @@ proc calc_regions(tree: RCBCutTree; gridlen: Triple[float]): seq[Region] =
 
 #******************** TiledGrid ********************
 type TiledGrid* = ref object of Grid
-  rcbcuts: RCBCutTree
+  cuts: RCBCutTree
 
-method registerCuts(grid: var TiledGrid; input_cuts: seq[float]) =
+method registerCuts(grid: var TiledGrid; input_cuts: seq[float] #[ (dim,ratio), ]#) =
   let cuts = collect:
     for i in countup(0, input_cuts.high, 2):
       (input_cuts[i].int.Dimension, input_cuts[i+1].ZeroOneFloat).TiledCut
-  grid.rcbcuts = cuts.asRCBCutTree
+  grid.cuts = cuts.asRCBCutTree
 
 method getRegions*(grid: TiledGrid): seq[Region] =
-  grid.rcbcuts.calc_regions(grid.len)
+  grid.cuts.calc_regions(grid.len)
 
 
 #[ # Not required anymore! #
