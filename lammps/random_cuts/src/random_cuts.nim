@@ -1,6 +1,8 @@
 import std / [random, math, sequtils, algorithm, strutils, cmdline]
 import general_utils / error
 
+# TODO: rewrite to use the already externalized components
+
 type
   GridStyle = enum
     Tensor = "tensor", Staggered = "staggered"
