@@ -1,4 +1,4 @@
-import sequtils
+import std / [sequtils, strutils]
 
 type
   OutputMode* = enum
@@ -17,6 +17,9 @@ converter toZeroOneFloat*(s: seq[Somefloat]): seq[ZeroOneFloat] =
 type
   Triple*[T] = tuple
     x, y, z: T
+
+proc parseIntTriple*(args: openArray[string]): Triple[int] {.raises: [ValueError, RangeDefect].} =
+  (args[0].parseInt, args[1].parseInt, args[2].parseInt).Triple
 
 proc prod*[T](t: Triple[T]): T =
   t.x * t.y * t.z

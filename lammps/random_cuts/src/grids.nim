@@ -1,4 +1,4 @@
-import std / [ random, sequtils, strutils, math, algorithm ]
+import std / [ random, sequtils, strutils, math, algorithm, sugar ]
 import basic_types
 
 #******************** Grid ********************
@@ -11,6 +11,7 @@ type
     rng: Rand
 
 proc newGrid*(grid: GridStyle; dim: Triple[int]; min_dist: float): Grid
+proc newGrid*(grid: GridStyle; dim: Triple[int]; min_dist: float; seed: int): Grid
 method genCuts(grid: var Grid) {.base.} = discard
 method csv*(grid: Grid): string {.base.} = discard
 
@@ -43,6 +44,16 @@ method csv*(grid: TensorGrid): string =
     grid.cuts.x.mapIt($it).join(","),
   ].join(",")
 
+proc lmpManualBalanceCmd*(grid: TensorGrid): string =
+  let cs = (x: grid.cuts.x[1..^2].join(" "),
+            y: grid.cuts.y[1..^2].join(" "),
+            z: grid.cuts.z[1..^2].join(" "))
+  if cs.x.len + cs.y.len + cs.z.len == 0:
+    return ""
+  "balance 0.9 " & (if cs.x.len > 0: " x " & cs.x else: "") &
+                   (if cs.y.len > 0: " y " & cs.y else: "") &
+                   (if cs.z.len > 0: " z " & cs.z else: "")
+
 
 
 #******************** StaggeredGrid ********************
@@ -67,11 +78,10 @@ method genCuts(grid: var StaggeredGrid) =
 
 method csv*(grid: StaggeredGrid): string =
   [
-    grid.cuts.z.mapIt($it).join(","),
-    grid.cuts.y.mapIt($it).join(","),
-    grid.cuts.x.mapIt($it).join(","),
+    grid.cuts.z.mapIt(it.map(a => $a).join(",")).join(","),
+    grid.cuts.y.mapIt(it.map(a => $a).join(",")).join(","),
+    grid.cuts.x.mapIt(it.map(a => $a).join(",")).join(","),
   ].join(",")
-
 
 
 
@@ -84,7 +94,7 @@ type TiledGrid* = ref object of Grid
 
 proc genTiledCut(grid: var TiledGrid): TiledCut =
   ( grid.rng.rand(Dimension),
-    grid.rng.rand(grid.min_dist..(1.0-grid.min_dist)).ZeroOneFloat ).TiledCut
+    grid.rng.rand(grid.min_dist..(1.0-grid.min_dist)).round(6) )
 
 method genCuts(grid: var TiledGrid) =
   grid.cuts = newSeqWith(grid.dim.prod.pred, grid.genTiledCut)
@@ -102,6 +112,16 @@ proc newGrid*(grid: GridStyle; dim: Triple[int]; min_dist: float): Grid =
     of TiledGridStyle: new TiledGrid
   result.dim = dim
   result.min_dist = min_dist
+  result.rng = initRand() # give a randomized Rand instance (initialized differently each time)
   result.genCuts
 
+proc newGrid*(grid: GridStyle; dim: Triple[int]; min_dist: float; seed: int): Grid =
+  result = case grid:
+    of TensorGridStyle: new TensorGrid
+    of StaggeredGridStyle: new StaggeredGrid
+    of TiledGridStyle: new TiledGrid
+  result.dim = dim
+  result.min_dist = min_dist
+  result.rng = initRand(seed)
+  result.genCuts
 
