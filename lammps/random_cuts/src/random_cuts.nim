@@ -1,6 +1,59 @@
-import std / [random, math, sequtils, algorithm, strutils, cmdline]
+import std / [sequtils, strutils, cmdline]
 import general_utils / error
+import basic_types, grids
 
+type System = object
+  outputMode: OutputMode
+  gridstyle: GridStyle
+  grid: Grid
+
+proc initSystem(outputMode: OutputMode; gridstyle: GridStyle; grid: Grid): System =
+  error_if outputMode == LmpBalance and gridstyle != TensorGridStyle, "The `lmp-balance` output mode only works for tensor grid"
+  System(outputMode: outputMode, gridstyle: gridstyle, grid: grid)
+
+proc parseSystem(args: seq[string]): System =
+  error_if args.len < 6, "missing arguments"
+  error_if args.len > 7, "too many arguments"
+  try:
+    let outputMode = parseEnum[OutputMode](args[0])
+    let gridstyle = parseEnum[GridStyle](args[1])
+    let dim = args[2..4].parseIntTriple
+    error_if([dim.x, dim.y, dim.z].anyIt(it == 0), "Only 3D grids are supported! (minimal dims: 1x1x1)")
+    let min_dist = args[5].parseFloat
+    error_if([1/dim.x, 1/dim.y, 1/dim.z].anyIt(it <= min_dist), "Minimal distance is too large")
+    var grid: Grid
+    if args.len > 6:
+      let seed = args[6].parseInt
+      grid = newGrid(gridstyle, dim, min_dist, seed)
+    else:
+      grid = newGrid(gridstyle, dim, min_dist)
+    return initSystem(outputMode, gridstyle, grid)
+  except:
+    error "invalid argument"
+
+
+proc output(sys: System): string =
+  case sys.outputMode:
+    of Csv:         sys.grid.csv
+    of LmpBalance:  sys.grid.TensorGrid.lmpManualBalanceCmd
+
+
+
+proc main() =
+  let cliargs = commandLineParams()
+
+  if "-h" in cliargs or "--help" in cliargs or cliargs.len == 0: usage_quit()
+
+  let sys = cliargs.parseSystem()
+  echo sys.output()
+
+
+when isMainModule:
+  error_info.usage = "./random_cuts <csv|lmp-balance> <tensor|staggered|tiled> <nx> <ny> <nz> <min-dist> [<seed>]"
+  main()
+
+
+#[
 type
   GridStyle = enum
     Tensor = "tensor", Staggered = "staggered"
@@ -32,8 +85,8 @@ proc generateCut(cuts: var Cuts; n: int): Cut =
 
 proc calc_cuts(cuts: var Cuts) =
   let nz = 1
-  let ny = if cuts.grid == Tensor: 1 else: #[Staggered]# cuts.dim.z
-  let nx = if cuts.grid == Tensor: 1 else: #[Staggered]# cuts.dim.z * cuts.dim.y
+  let ny = if cuts.grid == Tensor: 1 else: cuts.dim.z
+  let nx = if cuts.grid == Tensor: 1 else: cuts.dim.z * cuts.dim.y
   cuts.dimcuts.z = newSeqWith(nz, cuts.generateCut(cuts.dim.z))
   cuts.dimcuts.y = newSeqWith(ny, cuts.generateCut(cuts.dim.y))
   cuts.dimcuts.x = newSeqWith(nx, cuts.generateCut(cuts.dim.x))
@@ -94,3 +147,4 @@ when isMainModule:
   error_info.usage = "./random_cuts <csv|lmp-balance> <tensor|staggered> <nx> <ny> <nz> <min-dist> [<seed>]"
   main()
 
+]#

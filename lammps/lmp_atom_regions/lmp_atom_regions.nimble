@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.0"
+version       = "0.2.0"
 author        = "Yannic Kitten"
 description   = "lammps-script command generator for custom region cuts and atom creation"
 license       = "GPL-3.0-or-later"
