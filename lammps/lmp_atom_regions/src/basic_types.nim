@@ -79,10 +79,3 @@ type
 proc parseAtomParams*(args: openArray[string]): AtomParams {.raises: [ValueError].} =
   (args[0].parseInt, args[1].parseInt, args[2].parseBool).AtomParams
 
-
-#[
-  System = object
-    grid: Grid
-    regions: seq[Region]
-    atomparams: AtomParams
-]#

@@ -141,20 +141,6 @@ method getRegions*(grid: TiledGrid): seq[Region] =
   grid.cuts.calc_regions(grid.len)
 
 
-#[ # Not required anymore! #
-converter asTiledCuts(tree: RCBCutTree): TiledCuts =
-  var nodes = [tree].toDeque
-  while nodes.len > 0:
-    if not nodes.peekFirst.left.isNil:
-      nodes.addLast(nodes.peekFirst.left)
-    if not nodes.peekFirst.right.isNil:
-      nodes.addLast(nodes.peekFirst.right)
-    result.add nodes.popFirst.cut
-]#
-
-
-
-
 
 #************ Grid - implementation ***********
 proc newGrid*(grid: GridStyle; dim: Triple[int]; len: Triple[float]; input_cuts: seq[float]): Grid =
